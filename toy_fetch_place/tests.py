@@ -24,8 +24,7 @@ def test():
                                # 'fridge': [milk],
                                'floor': [robot]})
 
-    # fail_probabilities = {'Fetch': 0.5, 'Deliver': 0.5, 'Access': 0.2, 'Reset': 0.2, 'Detect': 0}
-    fail_probabilities = {}
+    fail_probabilities = {'Go': 0.1, 'PickUp': 0.5, 'Place': 0.4, 'Regrasp': 0.8, 'ManipulateEnvironment': 0.3}
 
     world = World(environment, robot, fail_probabilities)
     world.draw()
@@ -44,7 +43,7 @@ def test():
                                    Location(['bowl_1'], 'sink_drawer_lower')]),       #        search tree too big
                    ]
 
-    hpn.fbch.HPN(starting_state, goal_states[3],
+    hpn.fbch.HPN(starting_state, goal_states[6],
                  [go_operator, manipulate_environment_operator, pick_up_operator, place_operator], #, regrasp_operator],
                  world,
                  fileTag='test_visualization', hpnFileTag='test_visualization')
@@ -52,6 +51,8 @@ def test():
 
 test()
 
+
+################### Questions ########################
 
 # Why doesn't IsRobot prune the search tree? The goal IsRobot[spoon_1] = true is definitely false
 # and there is no operator to achieve that goal, but the planner has multiple fluents to achieve,
@@ -67,3 +68,7 @@ test()
 # But can we prevent this at planning time?
 
 # How to close the drawers after done with them?? Where should this go? Precondition? Result? Which operator?
+
+################ TODOs ######################
+
+# Define Open and Close as separate operators, at least because they have different fail probabilities

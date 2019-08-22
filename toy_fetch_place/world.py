@@ -1,4 +1,6 @@
 
+import hpnutil.dist # for DDist in state transition models
+
 class Item:
     possible_types = ('spoon', 'fork', 'cup', 'bowl', 'plate', 'milk', 'cereal', 'robot')
 
@@ -32,6 +34,8 @@ class Robot(Item):
                     raise Exception('Robot cannot be holding a robot in his hands: {}'.format(item.name))
                 self.items_in_hands[hand] = item
 
+    ################ getters #############
+
     def get_item_in_hand(self, hand):
         """
         :param str hand: one of the self.possible_arms
@@ -48,6 +52,8 @@ class Robot(Item):
         :return str: the hand or hands (one of self.possible_arms) which is/are holding the item, otherwise None
         """
         return [hand for (hand, item) in self.items_in_hands.items() if item and item.name == item_name]
+
+    ######### setters ##############
 
     def set_item_in_hand(self, item, hand):
         """
@@ -108,17 +114,10 @@ class Environment:
             for (container, state) in container_states.items():
                 self.container_states[container] = state
 
+    ######## getters ###############
+
     def get_container_state(self, container):
         return self.container_states[container] if container in self.container_locations else 'open'
-
-    def set_container_state(self, state, container):
-        """
-        :param str container: the name of the container to open or close, one of self.container_locations
-        :param str state: either 'open' or 'closed'
-        """
-        if state not in self.possible_container_states:
-            raise Exception('container state can only be one of {}'.format(self.possible_container_states))
-        self.container_states[container] = state
 
     def get_items_at_location(self, location):
         if location in self.possible_locations:
@@ -137,6 +136,17 @@ class Environment:
         location_as_list = [location for location, items in self.items_at_locations.items()
                             if [item for item in items if item.name == item_name]]
         return location_as_list[0] if location_as_list else None
+
+    ########### setters ############
+
+    def set_container_state(self, state, container):
+        """
+        :param str container: the name of the container to open or close, one of self.container_locations
+        :param str state: either 'open' or 'closed'
+        """
+        if state not in self.possible_container_states:
+            raise Exception('container state can only be one of {}'.format(self.possible_container_states))
+        self.container_states[container] = state
 
     def remove_item_from_location(self, item, location):
         current_location = self.get_location_of_item(item.name)
@@ -197,6 +207,11 @@ class World:
             print
         print
 
+    def reset(self, believed_world):
+        pass
+
+    ################ getters ############
+
     def get_item_with_name(self, name):
         """
         :param str name: name of the item we're looking for in the world
@@ -221,6 +236,11 @@ class World:
     def get_item_locations(self, item_name):
         return [self.environment.get_location_of_item(item_name)] or self.robot.get_hands_holding_item(item_name)
 
+    def get_robot_name(self):
+        return self.robot.name
+
+    ############# setters ###################
+
     def remove_item_at_location(self, item_name, location):
         item = self.get_item_with_name(item_name)
         if self.environment.get_location_of_item(item_name):
@@ -242,6 +262,8 @@ class World:
             self.robot.set_item_in_hand(item, location)
         else:
             raise Exception("invalid location {}".format(location))
+
+    ################## state transition functions ############
 
     def move_item_or_robot(self, item_name, start_location, goal_location):
         """
@@ -272,20 +294,41 @@ class World:
         self.remove_item_at_location(item_name, start_location)
         self.add_item_at_location(item_name, goal_location)
 
-    def get_robot_name(self):
-        return self.robot.name
+    def manipulate_environment(self, container_name, goal_state):
+        self.environment.set_container_state(goal_state, container_name)
 
-    # def object_location_transition_model(self, old_location, new_location, fail_probability):
-    #     """
-    #     Probability of successful location change is (1 - fail_probability)
-    #     :param str old_location: one of FactoryObject.possible_locations
-    #     :param str new_location: one of FactoryObject.possible_locations
-    #     :param float fail_probability: a number from 0 to 1
-    #     :return hpnutil.dist.DDist: a discrete distribution over locations
-    #     """
-    #     new_location_distribution = hpnutil.dist.DDist({new_location: 1 - fail_probability})
-    #     new_location_distribution.addProb(old_location, fail_probability)
-    #     return new_location_distribution
+    ################# state transition models ################
+
+    def container_state_transition_model(self, old_state, new_state, fail_probability):
+        """
+        Probability of successful state change is (1 - failProb)
+        :param str old_state: one of Environment.possible_container_states
+        :param str new_state: one of Environment.possible_container_states
+        :param float fail_probability: a real number from 0 to 1
+        :return hpnutil.dist.DDist: a discrete distribution over new states
+        """
+        if old_state not in self.environment.possible_container_states or\
+            new_state not in self.environment.possible_container_states:
+            raise Exception("Containers can only have a state which is one of the following: {}".
+                            format(self.environment.possible_container_states))
+        success_probability = (1 - fail_probability)
+        new_state_distribution = hpnutil.dist.DDist({new_state: success_probability})
+        new_state_distribution.addProb(old_state, 1 - success_probability)
+        return new_state_distribution
+
+    def object_location_transition_model(self, old_location, new_location, fail_probability):
+        """
+        Probability of successful location change is (1 - fail_probability)
+        :param str old_location: one of Environment.possible_locations or Robot.possible_arms
+        :param str new_location: one of Environment.possible_locations or Robot.possible_arms
+        :param float fail_probability: a number from 0 to 1
+        :return hpnutil.dist.DDist: a discrete distribution over new locations
+        """
+        new_location_distribution = hpnutil.dist.DDist({new_location: 1 - fail_probability})
+        new_location_distribution.addProb(old_location, fail_probability)
+        return new_location_distribution
+
+    ################ primitive #########################
 
     def executePrim(self, operator_name, primitive_arguments):
         """
@@ -293,68 +336,35 @@ class World:
         :param primitive_arguments: whatever the primitive of the operator returns
         :return: an observation which results from perceiving the effects of executing the primitive
         """
-        if operator_name == 'Go':
-            robot_name = primitive_arguments[0]
+        if operator_name == 'ManipulateEnvironment':
+            # container_state, container_name
+            container_name = primitive_arguments[0]
+            current_state = primitive_arguments[1]
+            goal_state = primitive_arguments[2]
+            # generate a distribution of possible new_states
+            new_state_distribution = \
+                self.container_state_transition_model(current_state, goal_state,
+                                                      self.operator_fail_probabilities[operator_name])
+            # draw one state from the distribution and assign it to the container
+            new_state = new_state_distribution.draw()
+            self.manipulate_environment(container_name, new_state)
+            # return the observation
+            return new_state
+        elif operator_name in ['Go', 'PickUp', 'Place', 'Regrasp']:
+            item_or_robot = primitive_arguments[0]
             start_location = primitive_arguments[1]
             goal_location = primitive_arguments[2]
-            self.move_item_or_robot(robot_name, start_location, goal_location)
-        elif operator_name == 'ManipulateEnvironment':
-            container_name = primitive_arguments[0]
-            container_state = primitive_arguments[1]
-            self.environment.set_container_state(container_state, container_name)
-        elif operator_name == 'PickUp':
-            arm = primitive_arguments[0]
-            item_name = primitive_arguments[1]
-            item_location = primitive_arguments[2]
-            self.move_item_or_robot(item_name, item_location, arm)
-        elif operator_name == 'Place':
-            arm = primitive_arguments[0]
-            item_name = primitive_arguments[1]
-            item_location = primitive_arguments[2]
-            self.move_item_or_robot(item_name, arm, item_location)
-        elif operator_name == 'Regrasp':
-            current_arm = primitive_arguments[0]
-            new_arm = primitive_arguments[1]
-            item_name = primitive_arguments[2]
-            self.move_item_or_robot(item_name, current_arm, new_arm)
+            # generate a distribution of possible new_locations
+            new_location_distribution =\
+                self.object_location_transition_model(start_location, goal_location,
+                                                      self.operator_fail_probabilities[operator_name])
+            # draw one location from the distribution and assign to the item_or_robot
+            new_location = new_location_distribution.draw()
+            self.move_item_or_robot(item_or_robot, start_location, new_location)
+            # return the observation
+            return new_location
+#       elif operator_name == 'ExamineLocation':
+#           location = primitive_arguments
+#           return map(lambda obj: obj.name, self.objects_at_location(location))
         else:
             raise Exception('Unknown operator primitive {}.'.format(operator_name))
-
-    #     if operator_name in ['Wash', 'Paint', 'Dry']:
-    #         object_name = primitive_arguments
-    #         new_state_distribution = self.object_state_transition_model(self.object_with_name(object_name).state,
-    #                                                                     self.operator_resulting_states[operator_name],
-    #                                                                     self.operator_fail_probabilities[operator_name],
-    #                                                                     self.relevant_probability)
-    #         # self.set_object_state(object_name, self.operator_resulting_states[operator_name])  # object_name, new_state
-    #         # instead of simply setting the new expected state as a result of executing the operator,
-    #         # draw a random sample from the discrete distribution over states that we get from the state transition model
-    #         resulting_state = new_state_distribution.draw()
-    #         self.set_object_state(object_name, resulting_state)
-    #         return resulting_state  # resulting_state will be our observation
-    #     elif operator_name == 'Move':
-    #         object_name = primitive_arguments[0]
-    #         start_location = primitive_arguments[1]
-    #         new_location = primitive_arguments[2]
-    #         # change the location
-    #         new_location_distribution = self.object_location_transition_model(start_location,
-    #                                                                           new_location,
-    #                                                                           self.operator_fail_probabilities[
-    #                                                                               operator_name])
-    #         resulting_location = new_location_distribution.draw()
-    #         self.set_object_location(object_name, start_location, resulting_location)
-    #         # there is a chance that during moving an object will get dirty
-    #         new_state_distribution = self.object_get_dirty_during_move_transition_model(
-    #             self.object_with_name(object_name).state,
-    #             self.probability_of_getting_dirty_when_moving)
-    #         resulting_state = new_state_distribution.draw()
-    #         self.set_object_state(object_name, resulting_state)
-    #         return resulting_location, resulting_state  # those two are our observations
-    #     elif operator_name == 'ExamineLocation':
-    #         location = primitive_arguments
-    #         return map(lambda obj: obj.name, self.objects_at_location(location))
-    #     else:
-    #         raise Exception('Unknown operator primitive {}.'.format(operator_name))
-
-    def reset(self, believed_world):
-        pass
