@@ -90,22 +90,30 @@ class GenRegraspCurrentArm(hpn.fbch.Function):
         return
 
 
-class GenPlaceItemNameAndLocation(hpn.fbch.Function):
+# class GenPlaceItemNameAndLocation(hpn.fbch.Function):
+#     @staticmethod
+#     def fun(generator_args, goal_fluents, world_state):
+#         """
+#         Given an arm to free by placing an object, what should be the item and the location to place the item?
+#         Answer: the item should be the one we're holding and the location should be robot's location.
+#         :param generator_args:
+#         :param goal_fluents:
+#         :param world_state:
+#         :return:
+#         """
+#         [arm_to_free, robot_name] = generator_args
+#         item_in_the_arm = world_state.robot.get_item_in_hand(arm_to_free)
+#         robot_location = world_state.get_item_locations(robot_name)[0]
+#         if item_in_the_arm:
+#             yield [item_in_the_arm.name, robot_location]
+#         return
+
+
+class GenPlaceLocation(hpn.fbch.Function):
     @staticmethod
     def fun(generator_args, goal_fluents, world_state):
-        """
-        Given an arm to free by placing an object, what should be the item and the location to place the item?
-        Answer: the item should be the one we're holding and the location should be robot's location.
-        :param generator_args:
-        :param goal_fluents:
-        :param world_state:
-        :return:
-        """
-        [arm_to_free, robot_name] = generator_args
-        item_in_the_arm = world_state.robot.get_item_in_hand(arm_to_free)
-        robot_location = world_state.get_item_locations(robot_name)[0]
-        if item_in_the_arm:
-            yield [item_in_the_arm.name, robot_location]
+        """Just gives the current robot location back"""
+        yield world_state.get_item_locations(world_state.get_robot_name()) # it's already a vector
         return
 
 
@@ -132,6 +140,29 @@ class GenPlaceArm(hpn.fbch.Function):
         for currently_free_arm in all_free_arms:
             yield [currently_free_arm]
         # if that doesn't help, try busy arms, but make sure you're not regrasping from A to A
+        non_free_arms = set(all_arms).difference(set(all_free_arms))
+        for currently_non_free_arm in non_free_arms:
+            yield [currently_non_free_arm]
+        return
+
+
+class GenFreeArm(hpn.fbch.Function):
+    @staticmethod
+    def fun(generator_args, goal_fluents, world_state):
+        """
+        Suggest an arm to open a container with. Or perform any other manipulation action that needs a free hand.
+        Prefer currently free arms.
+        :param generator_args:
+        :param goal_fluents:
+        :param world_state:
+        :return:
+        """
+        all_arms = world_state.robot.possible_arms
+        all_free_arms = [arm for arm in all_arms if not world_state.robot.get_item_in_hand(arm)]
+        # first try all free arms
+        for currently_free_arm in all_free_arms:
+            yield [currently_free_arm]
+        # if that doesn't help, try busy arms
         non_free_arms = set(all_arms).difference(set(all_free_arms))
         for currently_non_free_arm in non_free_arms:
             yield [currently_non_free_arm]

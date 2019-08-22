@@ -5,17 +5,18 @@ from toy_fetch_place.world import *
 from toy_fetch_place.world_state import *
 
 
-class RobotName(hpn.fbch.Fluent):
-    predicate = 'RobotName'
+class IsRobot(hpn.fbch.Fluent):
+    predicate = 'IsRobot'
 
     def test(self, world_state):
         """
         Say if the argument is a valid robot name
-        Robot() = RobotName
+        Robot(RobotName) = true/false
         :param world_state:
         :return str:
         """
-        return world_state.get_robot_name()
+        [robot_name] = self.args
+        return robot_name == world_state.get_robot_name()
 
 
 class Location(hpn.fbch.Fluent):
