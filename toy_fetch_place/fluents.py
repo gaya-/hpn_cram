@@ -1,8 +1,71 @@
 
 import hpn.fbch  # for Fluent
+import hpn.belief  # for Know fluent, which is a nested belief fluent
+import hpnutil.miscUtil  # for isVar in Know fluent
 
 from toy_fetch_place.world import *
 from toy_fetch_place.world_state import *
+
+
+class ConfidenceFluent(hpn.fbch.Fluent):
+    def probability(self, world_state):
+        '''
+        This function should return a number between 0 and 1,
+        which should represent the probability that the fluent holds,
+        i.e. the confidence of the fluent in the value that test() returns.
+        Should be implemented by any fluent that can be passed to the Know fluent as an argument
+        :param WorldState world_state:
+        :return float: probability number real between 0 and 1
+        '''
+        raise NotImplementedError
+
+
+class Know(hpn.belief.BFluent):
+    predicate = 'Know'
+    # Parameters are nested_fluent, value, probability/confidence
+    # This class is based on (copy pasted and adapted from) hpn.belief.Bd
+
+    def update(self):
+        if not hpnutil.miscUtil.isVar(self.args[0]):
+            # Set the value in the embedded fluent
+            self.args[0].value = self.args[1]
+            # Clear out strings, keep house
+            self.args[0].update()
+        super(self.__class__, self).update()
+
+    # Try to make this hash well, but also be optimistic.  In this case, p down
+    def optArgString(self):
+        if hpnutil.miscUtil.isVar(self.args[2]):
+            probStr = self.args[2]
+        else:
+            probStr = str(hpnutil.miscUtil.roundDownStr(self.args[2], 2))
+        return '['+ self.args[0].prettyString(False, includeValue = False) + \
+               ', ' + hpn.fbch.prettyString(self.args[1], False) + ',' + probStr + ']'
+
+    # def getValueGrounding(self, bstate):
+    #     (rFluent, v, p) = self.args
+    #     if not isGround(rFluent.args):
+    #         return {}
+    #     dv = rFluent.dist(bstate.details)
+    #     b = {}
+    #     if isAnyVar(v):
+    #         b[v] = dv.mode()
+    #     if isAnyVar(p):
+    #         b[p] = dv.prob(dv.mode())
+    #     return b
+
+    def getArgGrounding(self, state, extras = None):
+        (nested_fluent, value, probability) = self.args
+        # See if we have a domain-dependent way to do this
+        return nested_fluent.getArgGrounding(state, (value, probability))
+
+    # True if the "nested_fluent" has value "value" with probability greater than "probability"
+    def test(self, world_state):
+        (nested_fluent, value, probability) = self.args
+        assert hpnutil.miscUtil.isVar(probability) or (0 <= probability <= 1) or probability == None
+        fluent_value = nested_fluent.test(world_state)
+        fluent_probability = nested_fluent.probability(world_state)
+        return fluent_value == value and fluent_probability >= probability
 
 
 class IsRobot(hpn.fbch.Fluent):
@@ -11,7 +74,7 @@ class IsRobot(hpn.fbch.Fluent):
     def test(self, world_state):
         """
         Say if the argument is a valid robot name
-        Robot(RobotName) = true/false
+        IsRobot(RobotName) = true/false
         :param world_state:
         :return str:
         """
@@ -19,13 +82,13 @@ class IsRobot(hpn.fbch.Fluent):
         return robot_name == world_state.get_robot_name()
 
 
-class Location(hpn.fbch.Fluent):
+class Location(ConfidenceFluent):
     predicate = 'Location'
 
     def test(self, world_state):
         """
         Location(ItemName) = LocationName
-        TODO: !!!!!!!!!!!!!!!!!!!!! figure out how to deal with objects that can be in both hands, so multiple locations
+        TODO: figure out how to deal with objects that can be in both hands, so multiple locations
         :param World world_state:
         :return str:
         """
@@ -36,8 +99,13 @@ class Location(hpn.fbch.Fluent):
         else:
             raise Exception("The item {} did not have a location! O_O".format(item_name))
 
+    def probability(self, world_state):
+        [item_name] = self.args
+        item_location = self.test(world_state)
+        return world_state.get_probability_of_item_at_location(item_name, item_location)
 
-class InHand(hpn.fbch.Fluent):
+
+class InHand(ConfidenceFluent):
     predicate = 'InHand'
 
     def test(self, world_state):
@@ -53,32 +121,16 @@ class InHand(hpn.fbch.Fluent):
         else:
             return None
 
-    # def fglb(self, other_fluent, world_state):
-    #     """
-    #     Makes sure that the planner knows that a robot cannot two objects in the hand at the same time,
-    #     or that the robot cannot have None and an object in the hand at the same time.
-    #     :param other_fluent:
-    #     :param world_state:
-    #     :return:
-    #     """
-    #     [hand] = self.args
-    #     if other_fluent.predicate == 'InHand':
-    #         [other_hand] = other_fluent.args
-    #         # one hand cannot have two objects at the same time
-    #         if hand == other_hand and self.value != other_fluent.value:
-    #             # Copied from LPK: Basic FBCH already does this case, but I think since we're
-    #             # overriding this method now, we have to handle it.
-    #             return False, {}
-    #         # An object actually can be in two hands during dual-arm grasp
-    #         # elif hand != other_hand and self.value == other_fluent.value:
-    #         #     return False, {}
-    #         else:
-    #             return {self, other_fluent}, {}
-    #     else:
-    #         return {self, other_fluent}, {}
+    def probability(self, world_state):
+        [hand] = self.args
+        name_of_item_in_hand = self.test(world_state)
+        if name_of_item_in_hand:
+            return world_state.get_probability_of_item_in_hand(name_of_item_in_hand, hand)
+        else:
+            return 0.5
 
 
-class ContainerState(hpn.fbch.Fluent):
+class ContainerState(ConfidenceFluent):
     predicate = "ContainerState"
 
     def test(self, world_state):
@@ -90,3 +142,8 @@ class ContainerState(hpn.fbch.Fluent):
         [container_name] = self.args
         result =  world_state.environment.get_container_state(container_name)
         return result
+
+    def probability(self, world_state):
+        [container_name] = self.args
+        container_state = self.test(world_state)
+        return world_state.get_probability_of_container_state(container_name, container_state)

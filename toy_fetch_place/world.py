@@ -90,6 +90,8 @@ class Environment:
     container_locations = possible_locations[0:5]
     possible_container_states = ('open', 'closed')
 
+    # TODO: for each item we need an associated confidence that it is there,
+    #       so maybe it would've been easier to have a list of all items stored directly, not through locations
     def __init__(self, name, items_at_locations=None, container_states=None):
         """
         :param str name: the name of the environment
@@ -363,8 +365,8 @@ class World:
             self.move_item_or_robot(item_or_robot, start_location, new_location)
             # return the observation
             return new_location
-#       elif operator_name == 'ExamineLocation':
-#           location = primitive_arguments
-#           return map(lambda obj: obj.name, self.objects_at_location(location))
+        elif operator_name in ['ExamineEnvironment', 'ExamineHand']:
+            location = primitive_arguments
+            return map(lambda item: item.name, self.get_items_at_location(location))
         else:
             raise Exception('Unknown operator primitive {}.'.format(operator_name))

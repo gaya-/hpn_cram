@@ -31,7 +31,7 @@ def test():
 
     world_state = WorldState.to_world_state(world)
     starting_state = hpn.fbch.State([], world_state)
-    goal_states = [hpn.fbch.State([Location(['pr2'], 'fridge')]),                     # 0
+    goal_states = [hpn.fbch.State([Know([Location(['pr2']), 'fridge', 1], True)]),                  # 0
                    hpn.fbch.State([ContainerState(['fridge'], 'open')]),              # 1
                    hpn.fbch.State([InHand(['left_arm'], 'spoon_1')]),                 # 2
                    hpn.fbch.State([InHand(['left_arm'], 'spoon_1'),                   # 3
@@ -43,7 +43,7 @@ def test():
                                    Location(['bowl_1'], 'sink_drawer_lower')]),       #        search tree too big
                    ]
 
-    hpn.fbch.HPN(starting_state, goal_states[6],
+    hpn.fbch.HPN(starting_state, goal_states[0],
                  [go_operator, manipulate_environment_operator, pick_up_operator, place_operator], #, regrasp_operator],
                  world,
                  fileTag='test_visualization', hpnFileTag='test_visualization')
@@ -72,3 +72,7 @@ test()
 ################ TODOs ######################
 
 # Define Open and Close as separate operators, at least because they have different fail probabilities
+
+# Get rid of container state confidence, there's not perception for container states, so there's no point
+
+# In examine progress functions, when found an object somewhere, say that Know(Location(Object), SomewhereElse, 0) = true

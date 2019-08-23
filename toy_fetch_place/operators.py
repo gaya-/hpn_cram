@@ -17,14 +17,14 @@ go_operator = hpn.fbch.Operator(
     ['RobotName', 'StartLocation', 'DestinationLocation'],
     # Preconditions
     {0: {IsRobot(['RobotName'], True),
-         Location(['RobotName'], 'StartLocation'),
-         ContainerState(['DestinationLocation'], 'open')
+         Know([Location(['RobotName']), 'StartLocation', 1], True),
+         Know([ContainerState(['DestinationLocation']), 'open', 1], True)
          },
      # 1: {Location(['RobotName'], 'StartLocation')},
      # 2: {ContainerState(['DestinationLocation'], 'open')}
      },
     # Result
-    [({Location(['RobotName'], 'DestinationLocation')}, {})],
+    [({Know([Location(['RobotName']), 'DestinationLocation', 1], True)}, {})],
     # generators
     [GenRobotName(['RobotName'], [])],
     # Primitive
@@ -43,13 +43,13 @@ manipulate_environment_operator = hpn.fbch.Operator(
         # robotname has to be our robot
         IsRobot(['RobotName'], True),
         # the robot has to be standing on the floor, ideally close to the container
-        Location(['RobotName'], 'floor'),
+        Know([Location(['RobotName']), 'floor', 1], True),
         # and has to have a free hand to open the container with it
-        InHand(['Arm'], None),
+        Know([InHand(['Arm']), None, 1], True),
         # need this for calculating proper preimages
-        ContainerState(['ContainerName'], 'CurrentContainerState')}},
+        Know([ContainerState(['ContainerName']), 'CurrentContainerState', 1], True)}},
     # Result
-    [({ContainerState(['ContainerName'], 'ContainerState')}, {})],
+    [({Know([ContainerState(['ContainerName']), 'ContainerState', 1], True)}, {})],
     # generators
     [GenRobotName(['RobotName'], []),
      GenFreeArm(['Arm'], [])],
@@ -69,17 +69,17 @@ pick_up_operator = hpn.fbch.Operator(
         # RobotName has to be our robot
         IsRobot(['RobotName'], True),
         # the robot has to have a free hand
-        InHand(['Arm'], None),
+        Know([InHand(['Arm']), None, 1], True),
         # we're picking up the item from a certain location
-        Location(['ItemName'], 'ItemLocation'),
+        Know([Location(['ItemName']), 'ItemLocation', 1], True),
         # and the robot is at the same location
-        Location(['RobotName'], 'ItemLocation'),
+        Know([Location(['RobotName']), 'ItemLocation', 1], True),
         # and robots cannot pick up other robots
         IsRobot(['ItemName'], False)},
      # 1: {Location(['RobotName'], 'ItemLocation')}
      },
     # Result
-    [({InHand(['Arm'], 'ItemName')}, {})],
+    [({Know([InHand(['Arm']), 'ItemName', 0.75], True)}, {})],
     # generators
     [GenRobotName(['RobotName'], []),
      GenPickUpItemLocation(['ItemLocation'], ['ItemName'])],
@@ -99,7 +99,7 @@ place_operator = hpn.fbch.Operator(
         # RobotName has to be the name of our robot
         IsRobot(['RobotName'], True),
         # the item we're placing has to be in robot's hand
-        InHand(['Arm'], 'ItemName'),
+        Know([InHand(['Arm']), 'ItemName', 1], True),
         # robots cannot place other robots
         IsRobot(['ItemName'], False),
         # we have to know where we want to place the item.
@@ -108,13 +108,13 @@ place_operator = hpn.fbch.Operator(
         # where to intermediately dispose of an object
         # hpnutil.denotation.KRD(['ItemLocation'], True)  <-- somehow didn't work, not the right way to use it?
         # so we will only support placing an object there where the robot is currently standing
-        Location(['RobotName'], 'RobotLocation')
+        Know([Location(['RobotName']), 'RobotLocation', 1], True),
     },
      # 1: {Location(['RobotName'], 'ItemLocation')}
     },
     # Result
-    [({Location(['ItemName'], 'RobotLocation')}, {}),
-      ({InHand(['Arm'], None)}, {})
+    [({Know([Location(['ItemName']), 'RobotLocation', 0.75], True)}, {}),
+     ({Know([InHand(['Arm']), None, 0.75], True)}, {})
      ],
     # generators
     [GenRobotName(['RobotName'], []),
@@ -132,12 +132,11 @@ regrasp_operator = hpn.fbch.Operator(
     # Arguments
     ['CurrentArm', 'NewArm', 'ItemName'],
     # Preconditions
-    {0: {#Location(['ItemName'], 'CurrentArm'),
-         InHand(['CurrentArm'], 'ItemName'),
-         InHand(['NewArm'], None)}},
+    {0: {Know([InHand(['CurrentArm']), 'ItemName', 0.75], True),
+         Know([InHand(['NewArm']), None, 1.0], True)}},
     # Result
-    [({InHand(['NewArm'], 'ItemName')}, {}),
-     ({InHand(['CurrentArm'], None)}, {})],
+    [({Know([InHand(['NewArm']), 'ItemName', 0.75], True)}, {}),
+     ({Know([InHand(['CurrentArm']), None, 0.75], True)}, {})],
     # generators
     [GenRegraspNewArm(['NewArm', 'ItemName'], ['CurrentArm']),
      GenRegraspCurrentArm(['CurrentArm'], ['NewArm', 'ItemName']),
@@ -146,4 +145,38 @@ regrasp_operator = hpn.fbch.Operator(
     prim=regraspPrimitive,
     # Progress Function
     f=regraspProgress
+)
+
+examine_environment_operator = hpn.fbch.Operator(
+    # Name
+    'ExamineEnvironment',
+    # Arguments
+    ['ItemName', 'ItemLocation'],
+    # Preconditions
+    {0 : {Know([Location(['ItemName']), 'ItemLocation', 0.5], True)}},
+    # Result
+    [({Know([Location(['ItemName']), 'ItemLocation', 1], True)}, {})],
+    # generators
+    # [GenLikelyLoc(['ItemLocation'], ['ItemName'])],
+    # Primitive
+    prim = examinePrimitive,
+    # Progress Function
+    f = examineProgress
+)
+
+examine_hand_operator = hpn.fbch.Operator(
+    # Name
+    'ExamineHand',
+    # Arguments
+    ['ItemName', 'Arm'],
+    # Preconditions
+    {0 : {Know([InHand(['Arm']), 'ItemName', 0.5], True)}},
+    # Result
+    [({Know([InHand(['Arm']), 'ItemName', 1], True)}, {})],
+    # generators
+    # [GenLikelyArm(['Arm'], ['ItemName'])],
+    # Primitive
+    prim = examinePrimitive,
+    # Progress Function
+    f = examineProgress
 )
