@@ -90,6 +90,26 @@ class WorldState(World):
                           copy.copy(world.operator_fail_probabilities))
         return world_state
 
+    def draw(self):
+        chars_in_left_column = 40
+        print 'ROBOT {}:'.format(self.robot.name)
+        for arm in self.robot.possible_arms:
+            left_column_entry = '   {}: '.format(arm)
+            print left_column_entry + ' ' * (chars_in_left_column - len(left_column_entry)),
+            item_in_hand = self.robot.get_item_in_hand(arm)
+            print (item_in_hand.name if item_in_hand else 'None'),
+            print '({})'.format(self.robot.get_item_in_hand_confidence(arm))
+        print
+        print 'ENVIRONMENT {}:'.format(self.environment.name)
+        for location in self.environment.possible_locations:
+            left_column_entry = '   {}({}): '.format(location, self.environment.get_container_state(location))
+            print left_column_entry + ' ' * (chars_in_left_column - len(left_column_entry)),
+            for item in self.environment.get_items_at_location(location):
+                print item.name + ' ({})'.format(self.environment.get_item_at_location_confidence(location, item.name))\
+                      + '  ',
+            print
+        print
+
     def get_probability_of_item_in_hand(self, item_name, hand):
         """
         :param str item_name:

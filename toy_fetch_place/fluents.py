@@ -67,6 +67,64 @@ class Know(hpn.belief.BFluent):
         fluent_probability = nested_fluent.probability(world_state)
         return fluent_value == value and fluent_probability >= probability
 
+    def heuristicVal(self, world_state):
+        """
+        Return cost and a set of operations.
+        Useful if it will require backtracking to get good bindings
+        """
+        [nested_fluent, value, probability] = self.args
+        know_or_not_know = self.value
+        examine_op = hpn.fbch.Operator('HeuristicExamine', ['dummy'], {}, [], cost=1)
+        # easyH need instanceCost value of the operator, which is calculated automatically
+        # however, the default value is 'none', which is a string, and easyH expects only numbers
+        # so we set instanceCost manually here after creation,
+        # and if it has to change automatically, it can happen afterwards
+        examine_op.instanceCost = 1
+        if nested_fluent.predicate == 'Location':
+            [item_name] = nested_fluent.args
+            item_location = nested_fluent.value
+            if item_location in world_state.get_item_locations(item_name):
+                confidence = world_state.get_probability_of_item_at_location(item_name, item_location)
+                if 0.5 <= confidence < 1.0:
+                    return (1, {examine_op})
+                elif confidence == 1.0:
+                    return (0, set())
+            else:
+                move_item_op = hpn.fbch.Operator('HeuristicMoveItem', ['dummy'], {}, [], cost=1)
+                move_item_op.instanceCost = 1
+                return (2, {move_item_op, examine_op})
+            return (1, {examine_op})
+        elif nested_fluent.predicate == 'InHand':
+            return (1, {examine_op})
+        elif nested_fluent.predicate == 'ContainerState':
+            return (1, {examine_op})
+        else:
+            raise Exception("Know currently only supports 3 nested fluents. {} was given.".
+                            format(nested_fluent.predicate))
+
+    def fglb(self, other_fluent, world_state):
+        [nested_fluent, value, probability] = self.args
+        know = self.value
+        if other_fluent.predicate == 'Know':
+            [other_nested_fluent, other_value, other_probability] = other_fluent.args
+            other_know = other_fluent.value
+            # F(X) = val1 and F(X) = val2 default behavior redefinition
+            if nested_fluent == other_nested_fluent and value == other_value and probability == other_probability\
+                    and know != other_know:
+                # Basic FBCH already does this case, but I think since we're
+                # overriding this method now, we have to handle it.
+                return False, {}
+            elif nested_fluent == other_nested_fluent and value == other_value and know == other_know\
+                and probability != other_probability:
+                if probability > other_probability:
+                    return self, {}
+                else:
+                    return other_fluent, {}
+            else:
+                return {self, other_fluent}, {}
+        else:
+            return {self, other_fluent}, {}
+
 
 class IsRobot(hpn.fbch.Fluent):
     predicate = 'IsRobot'
@@ -80,6 +138,19 @@ class IsRobot(hpn.fbch.Fluent):
         """
         [robot_name] = self.args
         return robot_name == world_state.get_robot_name()
+
+    def heuristicVal(self, world_state):
+        """
+        Return cost and a set of operations.
+        Useful if it will require backtracking to get good bindings
+        """
+        [name] = self.args
+        if name == world_state.get_robot_name():
+            return (0, set())
+        else:
+            op = hpn.fbch.Operator('HeuristicIsRobot', ['dummy'], {}, [], cost = 100)
+            op.instanceCost = 100
+            return (1, {op})
 
 
 class Location(ConfidenceFluent):
@@ -104,6 +175,35 @@ class Location(ConfidenceFluent):
         item_location = self.test(world_state)
         return world_state.get_probability_of_item_at_location(item_name, item_location)
 
+    def fglb(self, other_fluent, world_state):
+        [item_name] = self.args
+        item_location = self.value
+        if other_fluent.predicate == 'Location':
+            [other_item_name] = other_fluent.args
+            other_item_locaiton = other_fluent.value
+            # the same object can be in two places, as in two arms, but here we will asume that it cannot
+            if item_name == other_item_name and item_location != other_item_locaiton:
+                # Basic FBCH already does this case, but I think since we're
+                # overriding this method now, we have to handle it.
+                return False, {}
+            else:
+                return {self, other_fluent}, {}
+        elif other_fluent.predicate == 'InHand':
+            [hand] = other_fluent.args
+            other_item_name = other_fluent.value
+            # item at location is basically the same as item in hand, if hand == location
+            if item_name == other_item_name and item_location != hand:
+                # if we're talking about the same item, Location(Item) = Loc and InHand(Hand) = Item
+                # can only hold if Loc = Hand
+                return False, {}
+            # and basically, having an object in the hand already implies that it is at hand location
+            elif item_name == other_item_name and item_location == hand:
+                return self, {}
+            else:
+                return {self, other_fluent}, {}
+        else:
+            return {self, other_fluent}, {}
+
 
 class InHand(ConfidenceFluent):
     predicate = 'InHand'
@@ -124,10 +224,7 @@ class InHand(ConfidenceFluent):
     def probability(self, world_state):
         [hand] = self.args
         name_of_item_in_hand = self.test(world_state)
-        if name_of_item_in_hand:
-            return world_state.get_probability_of_item_in_hand(name_of_item_in_hand, hand)
-        else:
-            return 0.5
+        return world_state.get_probability_of_item_in_hand(name_of_item_in_hand, hand)
 
 
 class ContainerState(ConfidenceFluent):

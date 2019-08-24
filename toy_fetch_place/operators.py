@@ -17,16 +17,16 @@ go_operator = hpn.fbch.Operator(
     ['RobotName', 'StartLocation', 'DestinationLocation'],
     # Preconditions
     {0: {IsRobot(['RobotName'], True),
-         Know([Location(['RobotName']), 'StartLocation', 1], True),
-         Know([ContainerState(['DestinationLocation']), 'open', 1], True)
+         Know([ContainerState(['DestinationLocation']), 'open', 1], True),
+         Know([Location(['RobotName']), 'StartLocation', 1], True)
          },
-     # 1: {Location(['RobotName'], 'StartLocation')},
-     # 2: {ContainerState(['DestinationLocation'], 'open')}
+      # 1: {Know([Location(['RobotName']), 'StartLocation', 1], True)},
      },
     # Result
     [({Know([Location(['RobotName']), 'DestinationLocation', 1], True)}, {})],
     # generators
-    [GenRobotName(['RobotName'], [])],
+    [GenRobotName(['RobotName'], []),
+     GenGoStartLocation(['StartLocation'], ['DestinationLocation'])],
     # Primitive
     prim=goPrimitive,
     # Progress Function
@@ -42,17 +42,23 @@ manipulate_environment_operator = hpn.fbch.Operator(
     {0: {
         # robotname has to be our robot
         IsRobot(['RobotName'], True),
-        # the robot has to be standing on the floor, ideally close to the container
-        Know([Location(['RobotName']), 'floor', 1], True),
-        # and has to have a free hand to open the container with it
+        # the robot has to have a free hand to open the container with it
         Know([InHand(['Arm']), None, 1], True),
         # need this for calculating proper preimages
-        Know([ContainerState(['ContainerName']), 'CurrentContainerState', 1], True)}},
+        Know([ContainerState(['ContainerName']), 'CurrentContainerState', 1], True),
+        # the robot has to be standing on the floor, ideally close to the container
+        Know([Location(['RobotName']), 'floor', 1], True)
+    },
+     # 1: {
+     #    # the robot has to be standing on the floor, ideally close to the container
+     #    Know([Location(['RobotName']), 'floor', 1], True)}
+    },
     # Result
     [({Know([ContainerState(['ContainerName']), 'ContainerState', 1], True)}, {})],
     # generators
     [GenRobotName(['RobotName'], []),
-     GenFreeArm(['Arm'], [])],
+     GenFreeArm(['Arm'], []),
+     GenCurrentContainerState(['CurrentContainerState'], ['ContainerName'])],
     # Primitive
     prim=manipulateEnvironmentPrimitive,
     # Progress Function
@@ -72,11 +78,14 @@ pick_up_operator = hpn.fbch.Operator(
         Know([InHand(['Arm']), None, 1], True),
         # we're picking up the item from a certain location
         Know([Location(['ItemName']), 'ItemLocation', 1], True),
-        # and the robot is at the same location
-        Know([Location(['RobotName']), 'ItemLocation', 1], True),
         # and robots cannot pick up other robots
-        IsRobot(['ItemName'], False)},
-     # 1: {Location(['RobotName'], 'ItemLocation')}
+        IsRobot(['ItemName'], False),
+        # and the robot is at the same location as the item
+        Know([Location(['RobotName']), 'ItemLocation', 1], True)
+    },
+     # 1: {
+     #    # and the robot is at the same location as the item
+     #    Know([Location(['RobotName']), 'ItemLocation', 1], True)}
      },
     # Result
     [({Know([InHand(['Arm']), 'ItemName', 0.75], True)}, {})],
@@ -93,7 +102,7 @@ place_operator = hpn.fbch.Operator(
     # Name
     'Place',
     # Arguments
-    ['RobotName', 'Arm', 'ItemName', 'RobotLocation'],
+    ['RobotName', 'Arm', 'ItemName', 'ItemLocation'],
     # Preconditions
     {0: {
         # RobotName has to be the name of our robot
@@ -108,56 +117,71 @@ place_operator = hpn.fbch.Operator(
         # where to intermediately dispose of an object
         # hpnutil.denotation.KRD(['ItemLocation'], True)  <-- somehow didn't work, not the right way to use it?
         # so we will only support placing an object there where the robot is currently standing
-        Know([Location(['RobotName']), 'RobotLocation', 1], True),
+        Know([Location(['RobotName']), 'ItemLocation', 1], True)
     },
-     # 1: {Location(['RobotName'], 'ItemLocation')}
+     # 1: {
+     #    # we have to know where we want to place the item.
+     #    # this is not the case if we just want to free up an arm,
+     #    # but for now we will not support this, it's a difficult task to find out
+     #    # where to intermediately dispose of an object
+     #    # hpnutil.denotation.KRD(['ItemLocation'], True)  <-- somehow didn't work, not the right way to use it?
+     #    # so we will only support placing an object there where the robot is currently standing
+     #    Know([Location(['RobotName']), 'ItemLocation', 1], True)}
     },
     # Result
-    [({Know([Location(['ItemName']), 'RobotLocation', 0.75], True)}, {}),
+    [({Know([Location(['ItemName']), 'ItemLocation', 0.75], True)}, {}),
      ({Know([InHand(['Arm']), None, 0.75], True)}, {})
      ],
     # generators
     [GenRobotName(['RobotName'], []),
-     GenPlaceLocation(['RobotLocation'], []),
-     GenPlaceArm(['Arm'], ['ItemName'])],
+     GenPlaceLocation(['ItemLocation'], []),
+     GenPlaceArm(['Arm'], ['ItemName']),
+     GenPlaceItemName(['ItemName'], ['Arm'])],
     # Primitive
     prim=placePrimitive,
     # Progress Function
     f=placeProgress
 )
 
-regrasp_operator = hpn.fbch.Operator(
-    # Name
-    'Regrasp',
-    # Arguments
-    ['CurrentArm', 'NewArm', 'ItemName'],
-    # Preconditions
-    {0: {Know([InHand(['CurrentArm']), 'ItemName', 0.75], True),
-         Know([InHand(['NewArm']), None, 1.0], True)}},
-    # Result
-    [({Know([InHand(['NewArm']), 'ItemName', 0.75], True)}, {}),
-     ({Know([InHand(['CurrentArm']), None, 0.75], True)}, {})],
-    # generators
-    [GenRegraspNewArm(['NewArm', 'ItemName'], ['CurrentArm']),
-     GenRegraspCurrentArm(['CurrentArm'], ['NewArm', 'ItemName']),
-    ],
-    # Primitive
-    prim=regraspPrimitive,
-    # Progress Function
-    f=regraspProgress
-)
+# regrasp_operator = hpn.fbch.Operator(
+#     # Name
+#     'Regrasp',
+#     # Arguments
+#     ['CurrentArm', 'NewArm', 'ItemName'],
+#     # Preconditions
+#     {0: {Know([InHand(['CurrentArm']), 'ItemName', 0.75], True),
+#          Know([InHand(['NewArm']), None, 1.0], True)}},
+#     # Result
+#     [({Know([InHand(['NewArm']), 'ItemName', 0.75], True)}, {}),
+#      ({Know([InHand(['CurrentArm']), None, 0.75], True)}, {})],
+#     # generators
+#     [GenRegraspNewArm(['NewArm', 'ItemName'], ['CurrentArm']),
+#      GenRegraspCurrentArm(['CurrentArm'], ['NewArm', 'ItemName']),
+#     ],
+#     # Primitive
+#     prim=regraspPrimitive,
+#     # Progress Function
+#     f=regraspProgress
+# )
 
 examine_environment_operator = hpn.fbch.Operator(
     # Name
     'ExamineEnvironment',
     # Arguments
-    ['ItemName', 'ItemLocation'],
+    ['ItemName', 'ItemLocation', 'ProbabilityBefore', 'RobotName'],
     # Preconditions
-    {0 : {Know([Location(['ItemName']), 'ItemLocation', 0.5], True)}},
+    {0: {Know([Location(['ItemName']), 'ItemLocation', 'ProbabilityBefore'], True),
+         IsRobot(['RobotName'], True),
+         Know([Location(['RobotName']), 'ItemLocation', 1], True)
+         },
+     # 1: {IsRobot(['RobotName'], True),
+     #     Know([Location(['RobotName']), 'ItemLocation', 1], True)}
+     },
     # Result
     [({Know([Location(['ItemName']), 'ItemLocation', 1], True)}, {})],
     # generators
-    # [GenLikelyLoc(['ItemLocation'], ['ItemName'])],
+    [GenExamineRegressProb(['ProbabilityBefore'], []),
+     GenRobotName(['RobotName'], [])],
     # Primitive
     prim = examinePrimitive,
     # Progress Function
@@ -168,13 +192,13 @@ examine_hand_operator = hpn.fbch.Operator(
     # Name
     'ExamineHand',
     # Arguments
-    ['ItemName', 'Arm'],
+    ['ItemName', 'Arm', 'ProbabilityBefore'],
     # Preconditions
-    {0 : {Know([InHand(['Arm']), 'ItemName', 0.5], True)}},
+    {0 : {Know([InHand(['Arm']), 'ItemName', 'ProbabilityBefore'], True)}},
     # Result
     [({Know([InHand(['Arm']), 'ItemName', 1], True)}, {})],
     # generators
-    # [GenLikelyArm(['Arm'], ['ItemName'])],
+    [GenExamineRegressProb(['ProbabilityBefore'], [])],
     # Primitive
     prim = examinePrimitive,
     # Progress Function

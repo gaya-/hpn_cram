@@ -13,6 +13,26 @@ class GenRobotName(hpn.fbch.Function):
         return
 
 
+class GenGoStartLocation(hpn.fbch.Function):
+    @staticmethod
+    def fun(generator_args, goal_fluents, world_state):
+        """
+        Returns a location where the robot might have been when he wanted to go to a destination location.
+        Going to only return current robot location, at that also only if the location is != destination.
+        Not going to consider any other possible locations, because the inflate the search tree....
+        :param generator_args:
+        :param goal_fluents:
+        :param WorldState world_state:
+        :return:
+        """
+        [destination_location] = generator_args
+        current_robot_location = world_state.get_item_locations(world_state.get_robot_name())[0]
+        if destination_location == current_robot_location:
+            return
+        else:
+            return [[current_robot_location]]
+
+
 class GenPickUpItemLocation(hpn.fbch.Function):
     @staticmethod
     def fun(generator_args, goal_fluents, world_state):
@@ -25,7 +45,7 @@ class GenPickUpItemLocation(hpn.fbch.Function):
         """
         [item_name] = generator_args
         # the item_name has to be bound
-        if hpnutil.miscUtil.isVar(item_name):
+        if hpnutil.miscUtil.isVar(item_name) or item_name == None:
             return
         item_with_given_name = world_state.get_item_with_name(item_name)
         current_item_locations = world_state.get_item_locations(item_name)
@@ -34,14 +54,17 @@ class GenPickUpItemLocation(hpn.fbch.Function):
         if current_location_without_in_hand:
             current_location_without_in_hand = current_location_without_in_hand.pop()
             yield [current_location_without_in_hand]
-        # if the current location of item didn't work, means the item has been moved in the meanwhile,
-        # so just return all other values
-        remaining_locations = set(world_state.environment.possible_locations)
-        if current_location_without_in_hand:
-            remaining_locations.remove(current_location_without_in_hand)
-        for location in remaining_locations:
-            yield [location]
         return
+        ### returning all other solutions makes the search tree huge.
+        ### so we're only going to return the actual location of the object and that's it...
+        # # if the current location of item didn't work, means the item has been moved in the meanwhile,
+        # # so just return all other values
+        # remaining_locations = set(world_state.environment.possible_locations)
+        # if current_location_without_in_hand:
+        #     remaining_locations.remove(current_location_without_in_hand)
+        # for location in remaining_locations:
+        #     yield [location]
+        # return
 
 
 class GenRegraspNewArm(hpn.fbch.Function):
@@ -146,6 +169,21 @@ class GenPlaceArm(hpn.fbch.Function):
         return
 
 
+class GenPlaceItemName(hpn.fbch.Function):
+    @staticmethod
+    def fun(generator_args, goal_fluents, world_state):
+        """Suggests an item name to place down, given the arm. Prefers the item the robot is holding at the moment."""
+        [arm] = generator_args
+        all_item_names = [item.name for item in world_state.items]
+        all_item_names = set(all_item_names).difference({world_state.get_robot_name()})
+        item_in_hand = world_state.robot.get_item_in_hand(arm)
+        if item_in_hand:
+            yield [item_in_hand.name]
+            all_item_names = all_item_names.difference({item_in_hand.name})
+        for it_name in all_item_names:
+            yield [it_name]
+
+
 class GenFreeArm(hpn.fbch.Function):
     @staticmethod
     def fun(generator_args, goal_fluents, world_state):
@@ -166,4 +204,32 @@ class GenFreeArm(hpn.fbch.Function):
         non_free_arms = set(all_arms).difference(set(all_free_arms))
         for currently_non_free_arm in non_free_arms:
             yield [currently_non_free_arm]
+        return
+
+
+class GenCurrentContainerState(hpn.fbch.Function):
+    @staticmethod
+    def fun(generator_args, goal_fluents, world_state):
+        """
+        Suggests a container state given a container name. Prefers the current state.
+        :param generator_args:
+        :param goal_fluents:
+        :param world_state:
+        :return:
+        """
+        [container_name] = generator_args
+        current_state = world_state.environment.get_container_state(container_name)
+        yield [current_state]
+        for state in set(world_state.environment.possible_container_states).difference({current_state}):
+            yield [state]
+        return
+
+
+class GenExamineRegressProb(hpn.fbch.Function):
+    @staticmethod
+    def fun(generator_args, goal_fluents, world_state):
+        """Suggests a probability prior to examine operation.
+        As that probability doesn't matter, we should return all probability values."""
+        for i in [0.5, 0.75, 0.25, 1, 0]:
+            yield [i]
         return

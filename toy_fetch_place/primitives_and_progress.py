@@ -31,7 +31,7 @@ def regraspPrimitive(operator_arguments, world_state):
 
 
 def examinePrimitive(operator_arguments, world_state):
-    # operator_arguments = ['ItemName', 'ItemLocation']
+    # operator_arguments = ['ItemName', 'ItemLocation', 'Prob']
     return operator_arguments[1]
 
 # # # # # # # # # # # # # Belief Progress Functions # # # # # # # # # # # # #
@@ -44,6 +44,9 @@ def manipulateEnvironmentProgress(world_state, operator_arguments, observations)
 def goProgress(world_state, operator_arguments, observations):
     # operator_arguments = ['RobotName', 'StartLocation', 'DestinationLocation']
     world_state.move_item_or_robot(operator_arguments[0], operator_arguments[1], observations)
+    # robot localization is perfect, so robot always knows where he is
+    robot_name = world_state.get_robot_name()
+    world_state.set_probability_of_item_at_location(robot_name, operator_arguments[1], observations, 1.0)
 
 
 def pickUpProgress(world_state, operator_arguments, observations):
@@ -62,13 +65,13 @@ def regraspProgress(world_state, operator_arguments, observations):
 
 
 def examineProgress(world_state, operator_arguments, observations):
-    [item_name, item_location] = operator_arguments
+    item_name = operator_arguments[0]
+    item_location = operator_arguments[1]
     list_of_item_names = observations
-    if item_name in list_of_item_names:
-        # the item is indeed there
-        # remove item from current location
-        current_item_location = world_state.get_item_locations(item_name)[0]
+    current_item_location = world_state.get_item_locations(item_name)[0]
+    if item_name in list_of_item_names:  # the item is indeed there
         # perception can teleport objects, and things can disappear from closed drawers, thus, we use low-level setters
+        # remove item from current location
         if current_item_location in world_state.environment.possible_locations:
             # item was in the environment
             world_state.environment.items_at_locations[current_item_location] =\
@@ -86,4 +89,9 @@ def examineProgress(world_state, operator_arguments, observations):
             world_state.robot.items_in_hands[item_location] = item
         # set the confidence to 1.0
         world_state.set_probability_of_item_at_location(item_name, current_item_location, item_location, 1.0)
-    # else: say that we know the object is NOT at other locations: Know(Location(Object), SomewhereElse, 0) = true
+    else:   # say that we know the object is NOT at other locations: Know(Location(Object), SomewhereElse, 0) = true
+        if item_location in world_state.robot.possible_arms and not list_of_item_names:
+            # the goal location is in robot's hand and we observed that the hand is empty,
+            # so say that we know the arm is empty with confidence of 1
+            world_state.robot.items_in_hands[item_location] = None
+            world_state.robot.set_item_in_hand_confidence(item_location, 1.0)

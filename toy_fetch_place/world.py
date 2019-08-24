@@ -367,6 +367,10 @@ class World:
             return new_location
         elif operator_name in ['ExamineEnvironment', 'ExamineHand']:
             location = primitive_arguments
-            return map(lambda item: item.name, self.get_items_at_location(location))
+            items_at_location = self.get_items_at_location(location)
+            if items_at_location:
+                return map(lambda item: item.name, items_at_location)
+            else:
+                return []
         else:
             raise Exception('Unknown operator primitive {}.'.format(operator_name))
