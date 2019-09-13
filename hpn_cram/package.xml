@@ -1,0 +1,19 @@
+<package format="2">
+  <name>hpn_cram</name>
+  <version>0.0.1</version>
+  <description>
+    ROS client side of the CRAM-HPN communication
+  </description>
+  <author>Gayane Kazhoyan</author>
+  <maintainer email="kazhoyan@cs.uni-bremen.de">Gayane Kazhoyan</maintainer>
+  <license>BSD</license>
+  <url type="website">http://cram-system.org</url>
+  <url type="bugtracker">https://github.com/cram2/cram/issues</url>
+  <url type="repository">https://github.com/cram2/cram</url>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>rospy</depend>
+
+  <depend>hpn_cram_msgs</depend>
+</package>

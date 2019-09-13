@@ -1,0 +1,22 @@
+<package format="2">
+  <name>hpn_cram_msgs</name>
+  <version>0.0.1</version>
+
+  <description>
+    Messages for communication between HPNCSP and CRAM systems
+  </description>
+
+  <author>Gayane Kazhoyan</author>
+  <maintainer email="kazhoyan@cs.uni-bremen.de">Gayane Kazhoyan</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>message_generation</depend>
+  <depend>message_runtime</depend>
+
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>shape_msgs</depend>
+  <depend>sensor_msgs</depend>
+</package>

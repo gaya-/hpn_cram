@@ -1,0 +1,14 @@
+
+##### Request #####
+
+geometry_msgs/PoseStamped robot_pose
+
+sensor_msgs/JointState robot_joint_state
+
+hpn_cram_msgs/ItemInSpace[] item_in_space_vector
+
+---
+
+##### Response #####
+
+bool success

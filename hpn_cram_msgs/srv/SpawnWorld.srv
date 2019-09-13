@@ -1,0 +1,10 @@
+
+##### Request #####
+
+hpn_cram_msgs/ItemGeometry[] item_geometry_vector
+
+---
+
+##### Response #####
+
+bool success
