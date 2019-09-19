@@ -35,6 +35,7 @@ ALREADY_SPAWNED = False
 
 DEFAULT_MASS = 0.2
 
+
 def spawn_objects(bodies):
     body_infos = []
     for (body_name, body_object) in bodies.items():
@@ -46,12 +47,7 @@ def spawn_objects(bodies):
     return success
 
 
-def set_world_state(signature, environment_bodies):
-    global ALREADY_SPAWNED
-    if not ALREADY_SPAWNED:
-        spawn_objects(environment_bodies)
-        ALREADY_SPAWNED = True
-
+def set_world_state(signature):
     poses = signature[0]
     item_in_space_infos = []
     for (object_name, object_pose) in poses:
@@ -65,18 +61,18 @@ def set_world_state(signature, environment_bodies):
 
     object_in_hand_list = signature[1]
     for object_in_hand_tuple in object_in_hand_list:
+        prehensile = object_in_hand_tuple[0]
+        attached_object_name = object_in_hand_tuple[1]
         link = ''
-        if object_in_hand_tuple[0] == 'left':
-            link = 'l_wrist_roll_link'
-        elif object_in_hand_tuple[0] == 'right':
-            link = 'r_wrist_roll_link'
-        else:
-            raise Exception("Unknown attachment link " + object_in_hand_tuple[0])
-        if object_in_hand_tuple[1]:
-            attached_object_name = object_in_hand_tuple[1][0]
-            attached_object_grasp = object_in_hand_tuple[1][1]
+        for (end_effector, attached_object_grasp) in [(prehensile.e1, prehensile.oc1), (prehensile.e2, prehensile.oc2)]:
+            if end_effector == 'left':
+                link = 'l_wrist_roll_link'
+            elif end_effector == 'right':
+                link = 'r_wrist_roll_link'
+            else:
+                raise Exception("Unknown attachment link " + end_effector)
             if attached_object_grasp and attached_object_grasp != 'none':
-                attached_object_pose_in_link_matrix = attached_object_grasp.grasp_trans[object_in_hand_tuple[0]].matrixInv
+                attached_object_pose_in_link_matrix = attached_object_grasp.grasp_trans[end_effector].matrixInv
                 position = [attached_object_pose_in_link_matrix[0][3],
                             attached_object_pose_in_link_matrix[1][3],
                             attached_object_pose_in_link_matrix[2][3]]
@@ -85,6 +81,28 @@ def set_world_state(signature, environment_bodies):
                                                  rotation_matrix=attached_object_pose_in_link_matrix,
                                                  attached_link=link)
                 item_in_space_infos.append(info)
+    # code for threeD object in hand implementation
+    # for object_in_hand_tuple in object_in_hand_list:
+    #     link = ''
+    #     if object_in_hand_tuple[0] == 'left':
+    #         link = 'l_wrist_roll_link'
+    #     elif object_in_hand_tuple[0] == 'right':
+    #         link = 'r_wrist_roll_link'
+    #     else:
+    #         raise Exception("Unknown attachment link " + object_in_hand_tuple[0])
+    #     if object_in_hand_tuple[1]:
+    #         attached_object_name = object_in_hand_tuple[1][0]
+    #         attached_object_grasp = object_in_hand_tuple[1][1]
+    #         if attached_object_grasp and attached_object_grasp != 'none':
+    #             attached_object_pose_in_link_matrix = attached_object_grasp.grasp_trans[object_in_hand_tuple[0]].matrixInv
+    #             position = [attached_object_pose_in_link_matrix[0][3],
+    #                         attached_object_pose_in_link_matrix[1][3],
+    #                         attached_object_pose_in_link_matrix[2][3]]
+    #             info = ros_interface.ItemInSpace(name=attached_object_name,
+    #                                              position=position,
+    #                                              rotation_matrix=attached_object_pose_in_link_matrix,
+    #                                              attached_link=link)
+    #             item_in_space_infos.append(info)
 
     static = signature[2]
     ## TODO: what to do with this self.static? What is the physical meaning behind this?
@@ -119,3 +137,44 @@ def set_world_state(signature, environment_bodies):
     robot_joint_state_dict['l_wrist_roll_joint'] = robot_config['pr2LeftArm'][6]
 
     return ros_interface.set_world_state_client(robot_x_y_theta, robot_joint_state_dict, item_in_space_infos)
+
+
+def execute_path(path_program, execute_otherwise_simulate, environment_bodies, signature):
+    global ALREADY_SPAWNED
+    if not ALREADY_SPAWNED:
+        spawn_objects(environment_bodies)
+        set_world_state(signature)
+        ALREADY_SPAWNED = True
+
+    for path in path_program:
+        action = path[0]
+        if action == 'move_arm':
+            (_, arm, conf1, conf2) = path
+            robot_config = conf2.value.conf
+            ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
+                                                                                        robot_config['pr2RightArm']))
+        elif action == 'move':
+            (_, conf1, conf2) = path
+            robot_config = conf2.value.conf
+            ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
+                                                                                        robot_config['pr2RightArm']))
+            ros_interface.perform_action_client(ros_interface.make_move_torso_action_msg(robot_config['pr2Torso']))
+            ros_interface.perform_action_client(ros_interface.make_going_action_msg(robot_config['pr2Base']))
+        elif action == 'gripper':
+            (_, hand, position) = path
+            ros_interface.perform_action_client(ros_interface.make_set_gripper_action_msg(hand, position))
+        elif action == 'grab':
+            (_, hand, object_name) = path
+            ros_interface.perform_action_client(ros_interface.make_grip_action_msg(hand, object_name))
+        elif action == 'detach':
+            (_, hand) = path
+            ros_interface.perform_action_client(ros_interface.make_release_gripper_action_msg(hand))
+        elif action == 'move_constraint':
+            (_, conf1, conf2) = path
+            raise NotImplementedError
+        elif action == 'pick':
+            (_, object_name) = path
+
+        elif action == 'release':
+            ros_interface.perform_action_client(ros_interface.make_release_gripper_action_msg('left'))
+            ros_interface.perform_action_client(ros_interface.make_release_gripper_action_msg('right'))

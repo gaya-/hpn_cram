@@ -38,12 +38,17 @@ import geometry_msgs.msg
 import sensor_msgs.msg
 import hpn_cram_msgs.srv
 import hpn_cram_msgs.msg
+import cram_commander.srv
 
 NODE_NAMESPACE = "cram_hpn"
 FIXED_FRAME = "map"
 
 ItemGeometry = namedtuple('ItemInfo', ['name', 'dimensions', 'color', 'mass'])
 ItemInSpace = namedtuple('ItemInSpace', ['name', 'position', 'rotation_matrix', 'attached_link'])
+
+spawn_world_service = None
+set_world_state_service = None
+perform_action_service = None
 
 
 def make_item_geometry_msg(item_info):
@@ -58,16 +63,24 @@ def make_item_geometry_msg(item_info):
 
 
 def spawn_world_client(items_infos_list):
+    global spawn_world_service
+    global set_world_state_service
+    global perform_action_service
+
     request_msg = [make_item_geometry_msg(item_info) for item_info in items_infos_list]
 
-    rospy.wait_for_service(NODE_NAMESPACE + '/spawn_world')
+    # rospy.wait_for_service(NODE_NAMESPACE + '/spawn_world')
     try:
-        spawn_world_service = rospy.ServiceProxy(NODE_NAMESPACE + '/spawn_world', hpn_cram_msgs.srv.SpawnWorld)
+        spawn_world_service = rospy.ServiceProxy(NODE_NAMESPACE + '/spawn_world',
+                                                 hpn_cram_msgs.srv.SpawnWorld)
+        set_world_state_service = rospy.ServiceProxy(NODE_NAMESPACE + '/set_world_state',
+                                                     hpn_cram_msgs.srv.SetWorldState)
+        perform_action_service = rospy.ServiceProxy(NODE_NAMESPACE + '/perform_designator',
+                                                    cram_commander.srv.PerformDesignator)
         response = spawn_world_service(request_msg)
         return response
     except rospy.ServiceException, e:
         print "Service call failed: %s"%e
-
 
 
 def make_robot_pose_msg(robot_x_y_theta):
@@ -120,10 +133,66 @@ def set_world_state_client(robot_x_y_theta, robot_joint_state_dict, items_infos)
     robot_info_msg = make_robot_joint_state_msg(robot_joint_state_dict)
     items_infos_msg = [make_item_in_space_msg(item_info) for item_info in items_infos]
 
-    rospy.wait_for_service(NODE_NAMESPACE + '/set_world_state')
+    # rospy.wait_for_service(NODE_NAMESPACE + '/set_world_state')
     try:
-        set_world_state_service = rospy.ServiceProxy(NODE_NAMESPACE + '/set_world_state', hpn_cram_msgs.srv.SetWorldState)
+        # set_world_state_service = rospy.ServiceProxy(NODE_NAMESPACE + '/set_world_state', hpn_cram_msgs.srv.SetWorldState)
         response = set_world_state_service(robot_pose_msg, robot_info_msg, items_infos_msg)
+        return response
+    except rospy.ServiceException, e:
+        print "Service call failed: %s"%e
+
+
+def make_going_action_msg(robot_x_y_theta):
+    pose = make_robot_pose_msg(robot_x_y_theta)
+    return '[\"AN\",\"ACTION\",{\"TYPE\":[\"GOING\"],\"TARGET\":[[\"A\",\"LOCATION\",{\"POSE\":' + \
+           '[[\"{}\",{},[{},{},{}],[{},{},{},{}]]]}}]]}}]'. \
+               format(pose.header.frame_id, pose.header.stamp,
+                      pose.pose.position.x, pose.pose.position.y, pose.pose.position.z,
+                      pose.pose.orientation.x, pose.pose.orientation.y, pose.pose.orientation.z,
+                      pose.pose.orientation.w)
+
+
+def make_arm_joint_action_msg(left_arm_joint_angles, right_arm_joint_angles):
+    return '[\"A\",\"MOTION\",{\"TYPE\":[\"MOVING-ARM-JOINTS\"],\"LEFT-JOINT-STATES\":[[' + \
+           '[\"l_shoulder_pan_joint\",{}],[\"l_shoulder_lift_joint\",{}],[\"l_upper_arm_roll_joint\",{}],' \
+           '[\"l_elbow_flex_joint\",{}],[\"l_forearm_roll_joint\",{}],[\"l_wrist_flex_joint\",{}],[\"l_wrist_roll_joint\",{}]'. \
+               format(left_arm_joint_angles[0], left_arm_joint_angles[1], left_arm_joint_angles[2],
+                      left_arm_joint_angles[3], left_arm_joint_angles[4], left_arm_joint_angles[5],
+                      left_arm_joint_angles[6]) + \
+           ']],\"RIGHT-JOINT-STATES\":[[' \
+           '[\"r_shoulder_pan_joint\",{}],[\"r_shoulder_lift_joint\",{}],[\"r_upper_arm_roll_joint\",{}],' \
+           '[\"r_elbow_flex_joint\",{}],[\"r_forearm_roll_joint\",{}],[\"r_wrist_flex_joint\",{}],' \
+           '[\"r_wrist_roll_joint\",{}]]]}}]'. \
+               format(right_arm_joint_angles[0], right_arm_joint_angles[1], right_arm_joint_angles[2],
+                      right_arm_joint_angles[3], right_arm_joint_angles[4], right_arm_joint_angles[5],
+                      right_arm_joint_angles[6])
+
+
+def make_move_torso_action_msg(torso_joint_angle):
+    return '[\"A\",\"ACTION\",{{\"TYPE\":[\"MOVING-TORSO\"],\"JOINT-ANGLE\":[{}]}}]'.format(torso_joint_angle)
+
+
+def make_set_gripper_action_msg(arm, position):
+    return '[\"A\",\"ACTION\",{{\"TYPE\":[\"SETTING-GRIPPER\"],\"GRIPPER\":[\"{}\"],\"POSITION\":[{}]}}]'. \
+        format(arm, position)
+
+
+def make_release_gripper_action_msg(arm):
+    return '[\"A\",\"ACTION\",{{\"TYPE\":[\"RELEASING\"],\"GRIPPER\":[\"{}\"]}}]'.format(arm)
+
+
+def make_grip_action_msg(arm, object_name):
+    return '[\"A\",\"ACTION\",{{\"TYPE\":[\"GRIPPING\"],\"GRIPPER\":[\"{}\"],' \
+           '\"OBJECT\":[[\"A\",\"OBJECT\",{{\"NAME\":[\"{}\"]}}]]}}]'. \
+        format(arm, object_name)
+
+
+def perform_action_client(action_string):
+    # rospy.wait_for_service(NODE_NAMESPACE + '/perform_designator')
+    try:
+        # perform_action_service = rospy.ServiceProxy(NODE_NAMESPACE + '/perform_designator',
+        #                                             cram_commander.srv.PerformDesignator)
+        response = perform_action_service(action_string)
         return response
     except rospy.ServiceException, e:
         print "Service call failed: %s"%e
