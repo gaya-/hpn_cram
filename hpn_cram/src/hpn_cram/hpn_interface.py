@@ -52,7 +52,7 @@ def set_world_state(signature):
     item_in_space_infos = []
     for (object_name, object_pose) in poses:
         position = [object_pose.value.x, object_pose.value.y, object_pose.value.z] # object_pose.body.point
-        rotation_matrix = numpy.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+        rotation_matrix = object_pose.value.matrix
         info = ros_interface.ItemInSpace(name=object_name,
                                          position=position,
                                          rotation_matrix=rotation_matrix,
