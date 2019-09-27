@@ -29,6 +29,8 @@
 
 from collections import namedtuple
 
+import json
+
 import graphics.colorNames # pyamber
 
 import rospy
@@ -169,7 +171,13 @@ def make_arm_joint_action_msg(left_arm_joint_angles, right_arm_joint_angles):
 
 
 def make_move_torso_action_msg(torso_joint_angle):
-    return '[\"A\",\"ACTION\",{{\"TYPE\":[\"MOVING-TORSO\"],\"JOINT-ANGLE\":[{}]}}]'.format(torso_joint_angle)
+    return '[\"A\",\"ACTION\",{{\"TYPE\":[\"MOVING-TORSO\"],\"JOINT-ANGLE\":[{}]}}]'.format(torso_joint_angle[0])
+
+
+def make_look_action_msg(x_y_z):
+    return '[\"A\",\"ACTION\",{{\"TYPE\":[\"LOOKING\"],\"TARGET\":[' \
+           '[\"A\",\"LOCATION\",{{\"POSE\":[[\"map\",0.000000,[{},{},{}],[0.000000,0.000000,0.0,1.0]]]}}]]}}]'.\
+        format(x_y_z[0], x_y_z[1], x_y_z[2])
 
 
 def make_set_gripper_action_msg(arm, position):
@@ -187,12 +195,33 @@ def make_grip_action_msg(arm, object_name):
         format(arm, object_name)
 
 
+def make_detect_action_msg(region_name):
+    return '[\"A\",\"ACTION\",{{\"TYPE\":[\"DETECTING\"],\"OBJECT\":[' \
+           '[\"ALL\",\"OBJECT\",{{\"LOCATION\":[[\"A\",\"LOCATION\",{{\"ON\":[' \
+           '[\"A\",\"OBJECT\",{{\"TYPE\":[\"COUNTER-TOP\"],\"URDF-NAME\":[\"{}\"],' \
+           '\"OWL-NAME\":[\"kitchen_sink_block_counter_top\"]}}]]}}]]}}]]}}]'. \
+        format(region_name)
+
+
+def parse_return_json_string(json_string):
+    parsed_json = json.loads(json_string)
+    object_name_pose_dict = {}
+    for object_designator_json in parsed_json:
+        object_name = object_designator_json[2][u'NAME'][0].lower().encode('ascii', 'ignore')
+        object_pose_in_map = object_designator_json[2][u'POSE'][0][2][1]
+        object_x_y_z = object_pose_in_map[2]
+        object_q1_q2_q3_w = object_pose_in_map[3]
+        object_theta = tf.transformations.euler_from_quaternion(object_q1_q2_q3_w)[2]
+        object_name_pose_dict[object_name] = [object_x_y_z, object_theta]
+    return object_name_pose_dict
+
+
 def perform_action_client(action_string):
     # rospy.wait_for_service(NODE_NAMESPACE + '/perform_designator')
     try:
         # perform_action_service = rospy.ServiceProxy(NODE_NAMESPACE + '/perform_designator',
         #                                             cram_commander.srv.PerformDesignator)
         response = perform_action_service(action_string)
-        return response
+        return [parse_return_json_string(response.result)] if response.result else []
     except rospy.ServiceException, e:
         print "Service call failed: %s"%e

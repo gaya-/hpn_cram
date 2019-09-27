@@ -48,16 +48,19 @@ def spawn_objects(bodies):
 
 
 def set_world_state(signature):
+    static_names = signature[2]
+
     poses = signature[0]
     item_in_space_infos = []
     for (object_name, object_pose) in poses:
-        position = [object_pose.value.x, object_pose.value.y, object_pose.value.z] # object_pose.body.point
-        rotation_matrix = object_pose.value.matrix
-        info = ros_interface.ItemInSpace(name=object_name,
-                                         position=position,
-                                         rotation_matrix=rotation_matrix,
-                                         attached_link='')
-        item_in_space_infos.append(info)
+        if True: #object_name in static_names:
+            position = [object_pose.value.x, object_pose.value.y, object_pose.value.z] # object_pose.body.point
+            rotation_matrix = object_pose.value.matrix
+            info = ros_interface.ItemInSpace(name=object_name,
+                                             position=position,
+                                             rotation_matrix=rotation_matrix,
+                                             attached_link='')
+            item_in_space_infos.append(info)
 
     object_in_hand_list = signature[1]
     for object_in_hand_tuple in object_in_hand_list:
@@ -104,9 +107,6 @@ def set_world_state(signature):
     #                                              attached_link=link)
     #             item_in_space_infos.append(info)
 
-    static = signature[2]
-    ## TODO: what to do with this self.static? What is the physical meaning behind this?
-
     robot_config = signature[3].value.conf
     robot_x_y_theta = robot_config['pr2Base']
     robot_joint_state_dict = {}
@@ -146,35 +146,56 @@ def execute_path(path_program, execute_otherwise_simulate, environment_bodies, s
         set_world_state(signature)
         ALREADY_SPAWNED = True
 
+    observations = []
     for path in path_program:
         action = path[0]
         if action == 'move_arm':
             (_, arm, conf1, conf2) = path
             robot_config = conf2.value.conf
-            ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
-                                                                                        robot_config['pr2RightArm']))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
+                                                                                            robot_config['pr2RightArm'])))
         elif action == 'move':
             (_, conf1, conf2) = path
             robot_config = conf2.value.conf
-            ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
-                                                                                        robot_config['pr2RightArm']))
-            ros_interface.perform_action_client(ros_interface.make_move_torso_action_msg(robot_config['pr2Torso']))
-            ros_interface.perform_action_client(ros_interface.make_going_action_msg(robot_config['pr2Base']))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
+                                                                                            robot_config['pr2RightArm'])))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_move_torso_action_msg(robot_config['pr2Torso'])))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_going_action_msg(robot_config['pr2Base'])))
+            # observations.extend(
+            #     ros_interface.perform_action_client(ros_interface.make_look_action_msg(robot_config['pr2Head'])))
         elif action == 'gripper':
             (_, hand, position) = path
-            ros_interface.perform_action_client(ros_interface.make_set_gripper_action_msg(hand, position))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_set_gripper_action_msg(hand, position)))
         elif action == 'grab':
             (_, hand, object_name) = path
-            ros_interface.perform_action_client(ros_interface.make_grip_action_msg(hand, object_name))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_grip_action_msg(hand, object_name)))
         elif action == 'detach':
             (_, hand) = path
-            ros_interface.perform_action_client(ros_interface.make_release_gripper_action_msg(hand))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_release_gripper_action_msg(hand)))
         elif action == 'move_constraint':
             (_, conf1, conf2) = path
             raise NotImplementedError
         elif action == 'pick':
             (_, object_name) = path
-
+            raise NotImplementedError
         elif action == 'release':
-            ros_interface.perform_action_client(ros_interface.make_release_gripper_action_msg('left'))
-            ros_interface.perform_action_client(ros_interface.make_release_gripper_action_msg('right'))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_release_gripper_action_msg('left')))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_release_gripper_action_msg('right')))
+        elif action == 'perceive':
+            (_, obj, region_name, conf, pose) = path
+            x_y_z = (pose.value.x, pose.value.y, pose.value.z)
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_look_action_msg(x_y_z)))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_detect_action_msg(region_name)))
+            print observations
+        return observations
