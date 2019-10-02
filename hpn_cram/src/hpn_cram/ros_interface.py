@@ -28,10 +28,12 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 from collections import namedtuple
+import numpy as np  # for forward kinematics transform matrix
 
 import json
 
-import graphics.colorNames # pyamber
+import graphics.colorNames  # pyamber
+import geometry.hu  # pyamber, for Transform for forward kinematics
 
 import rospy
 import tf.transformations
@@ -53,6 +55,21 @@ set_world_state_service = None
 perform_action_service = None
 
 
+def initialize_ros_clients():
+    global spawn_world_service
+    global set_world_state_service
+    global perform_action_service
+    rospy.wait_for_service(NODE_NAMESPACE + '/spawn_world')
+    rospy.wait_for_service(NODE_NAMESPACE + '/set_world_state')
+    rospy.wait_for_service(NODE_NAMESPACE + '/perform_designator')
+    spawn_world_service = rospy.ServiceProxy(NODE_NAMESPACE + '/spawn_world',
+                                             hpn_cram_msgs.srv.SpawnWorld)
+    set_world_state_service = rospy.ServiceProxy(NODE_NAMESPACE + '/set_world_state',
+                                                 hpn_cram_msgs.srv.SetWorldState)
+    perform_action_service = rospy.ServiceProxy(NODE_NAMESPACE + '/perform_designator',
+                                                cram_commander.srv.PerformDesignator)
+
+
 def make_item_geometry_msg(item_info):
     item_geometry = hpn_cram_msgs.msg.ItemGeometry()
     item_geometry.item_name = item_info.name
@@ -65,20 +82,10 @@ def make_item_geometry_msg(item_info):
 
 
 def spawn_world_client(items_infos_list):
-    global spawn_world_service
-    global set_world_state_service
-    global perform_action_service
-
     request_msg = [make_item_geometry_msg(item_info) for item_info in items_infos_list]
 
-    # rospy.wait_for_service(NODE_NAMESPACE + '/spawn_world')
     try:
-        spawn_world_service = rospy.ServiceProxy(NODE_NAMESPACE + '/spawn_world',
-                                                 hpn_cram_msgs.srv.SpawnWorld)
-        set_world_state_service = rospy.ServiceProxy(NODE_NAMESPACE + '/set_world_state',
-                                                     hpn_cram_msgs.srv.SetWorldState)
-        perform_action_service = rospy.ServiceProxy(NODE_NAMESPACE + '/perform_designator',
-                                                    cram_commander.srv.PerformDesignator)
+        global spawn_world_service
         response = spawn_world_service(request_msg)
         return response
     except rospy.ServiceException, e:
@@ -135,9 +142,8 @@ def set_world_state_client(robot_x_y_theta, robot_joint_state_dict, items_infos)
     robot_info_msg = make_robot_joint_state_msg(robot_joint_state_dict)
     items_infos_msg = [make_item_in_space_msg(item_info) for item_info in items_infos]
 
-    # rospy.wait_for_service(NODE_NAMESPACE + '/set_world_state')
     try:
-        # set_world_state_service = rospy.ServiceProxy(NODE_NAMESPACE + '/set_world_state', hpn_cram_msgs.srv.SetWorldState)
+        global set_world_state_service
         response = set_world_state_service(robot_pose_msg, robot_info_msg, items_infos_msg)
         return response
     except rospy.ServiceException, e:
@@ -168,6 +174,41 @@ def make_arm_joint_action_msg(left_arm_joint_angles, right_arm_joint_angles):
                format(right_arm_joint_angles[0], right_arm_joint_angles[1], right_arm_joint_angles[2],
                       right_arm_joint_angles[3], right_arm_joint_angles[4], right_arm_joint_angles[5],
                       right_arm_joint_angles[6])
+
+
+def make_arm_cart_action_msg(amber_conf, arm=None):
+    # amber_conf_copy = amber_conf.copy()
+    # amber_conf_copy.conf['pr2Base'] = [0, 0, 0]
+    left_string = ''
+    right_string = ''
+    if arm == 'left' or arm == None:
+        # left_ee_pose_in_base = amber_conf_copy.cartConf()['pr2LeftArm']
+        left_ee_pose_in_base = amber_conf.cartConf()['pr2LeftArm']
+        left_ee_T_tcp = geometry.hu.Transform(np.array([[1, 0, 0, 0.18], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
+        left_tcp_pose_in_base = left_ee_pose_in_base.compose(left_ee_T_tcp)
+        left_position = [left_tcp_pose_in_base.matrix[0][3],
+                         left_tcp_pose_in_base.matrix[1][3],
+                         left_tcp_pose_in_base.matrix[2][3]]
+        left_quaternion = left_tcp_pose_in_base.quat().matrix
+        left_string = '\"LEFT-POSE\":[[\"base_footprint\",0.000000,[{},{},{}],[{},{},{},{}]]],'.\
+            format(left_position[0], left_position[1], left_position[2],
+                   left_quaternion[0], left_quaternion[1], left_quaternion[2], left_quaternion[3])
+    if arm == 'right' or arm == None:
+        # right_ee_pose_in_base = amber_conf_copy.cartConf()['pr2RightArm']
+        right_ee_pose_in_base = amber_conf.cartConf()['pr2RightArm']
+        right_ee_T_tcp = geometry.hu.Transform(np.array([[1, 0, 0, 0.23], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
+        right_tcp_pose_in_base = right_ee_pose_in_base.compose(right_ee_T_tcp)
+        right_position = [right_tcp_pose_in_base.matrix[0][3],
+                          right_tcp_pose_in_base.matrix[1][3],
+                          right_tcp_pose_in_base.matrix[2][3]]
+        right_quaternion = right_tcp_pose_in_base.quat().matrix
+        right_quaternion = [right_quaternion[0], right_quaternion[1], right_quaternion[2], right_quaternion[3]]
+        right_string = '\"RIGHT-POSE\":[[\"base_footprint\",0.000000,[{},{},{}],[{},{},{},{}]]],'.\
+            format(right_position[0], right_position[1], right_position[2],
+                   right_quaternion[0], right_quaternion[1], right_quaternion[2], right_quaternion[3])
+    return '[\"A\",\"MOTION\",{\"TYPE\":[\"MOVING-TCP\"],' + \
+           left_string + right_string +\
+           '\"COLLISION-MODE\":[\"ALLOW-HAND\"]}]'
 
 
 def make_move_torso_action_msg(torso_joint_angle):
@@ -207,7 +248,7 @@ def parse_return_json_string(json_string):
     parsed_json = json.loads(json_string)
     object_name_pose_dict = {}
     for object_designator_json in parsed_json:
-        object_name = object_designator_json[2][u'NAME'][0].lower().encode('ascii', 'ignore')
+        object_name = object_designator_json[2][u'NAME'][0].lower().encode('ascii', 'ignore').replace('-', '_')
         object_pose_in_map = object_designator_json[2][u'POSE'][0][2][1]
         object_x_y_z = object_pose_in_map[2]
         object_q1_q2_q3_w = object_pose_in_map[3]
@@ -217,10 +258,8 @@ def parse_return_json_string(json_string):
 
 
 def perform_action_client(action_string):
-    # rospy.wait_for_service(NODE_NAMESPACE + '/perform_designator')
     try:
-        # perform_action_service = rospy.ServiceProxy(NODE_NAMESPACE + '/perform_designator',
-        #                                             cram_commander.srv.PerformDesignator)
+        global perform_action_service
         response = perform_action_service(action_string)
         return [parse_return_json_string(response.result)] if response.result else []
     except rospy.ServiceException, e:

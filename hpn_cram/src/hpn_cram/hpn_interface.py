@@ -27,33 +27,35 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-import numpy # for tolist()
+import numpy as np # for tolist()
 
 import ros_interface # for ItemGeometry and all the functions
 
 ALREADY_SPAWNED = False
+EMULATE_REAL_WORLD = True
 
 DEFAULT_MASS = 0.2
 
 
-def spawn_objects(bodies):
+def spawn_objects(bodies, static_object_names, spawn_static):
     body_infos = []
     for (body_name, body_object) in bodies.items():
-        dimensions = (body_object.value.shapeBBox[1] - body_object.value.shapeBBox[0]).tolist()
-        color = body_object.value.properties['color']
-        info = ros_interface.ItemGeometry(name=body_name, dimensions=dimensions, color=color, mass=DEFAULT_MASS)
-        body_infos.append(info)
+        if spawn_static or body_name not in static_object_names:
+            dimensions = (body_object.value.shapeBBox[1] - body_object.value.shapeBBox[0]).tolist()
+            color = body_object.value.properties['color']
+            info = ros_interface.ItemGeometry(name=body_name, dimensions=dimensions, color=color, mass=DEFAULT_MASS)
+            body_infos.append(info)
     success = ros_interface.spawn_world_client(body_infos)
     return success
 
 
-def set_world_state(signature):
+def set_world_state(signature, move_manipulation_objects):
     static_names = signature[2]
 
     poses = signature[0]
     item_in_space_infos = []
     for (object_name, object_pose) in poses:
-        if True: #object_name in static_names:
+        if move_manipulation_objects or object_name in static_names:
             position = [object_pose.value.x, object_pose.value.y, object_pose.value.z] # object_pose.body.point
             rotation_matrix = object_pose.value.matrix
             info = ros_interface.ItemInSpace(name=object_name,
@@ -139,11 +141,14 @@ def set_world_state(signature):
     return ros_interface.set_world_state_client(robot_x_y_theta, robot_joint_state_dict, item_in_space_infos)
 
 
-def execute_path(path_program, execute_otherwise_simulate, environment_bodies, signature):
-    global ALREADY_SPAWNED
+def execute_path(path_program, execute_otherwise_simulate, environment_bodies, signature, arms):
+    global ALREADY_SPAWNED, EMULATE_REAL_WORLD
     if not ALREADY_SPAWNED:
-        spawn_objects(environment_bodies)
-        set_world_state(signature)
+        ros_interface.initialize_ros_clients()
+
+    if not EMULATE_REAL_WORLD and not ALREADY_SPAWNED:
+        spawn_objects(environment_bodies, signature[2], not EMULATE_REAL_WORLD)
+        set_world_state(signature, not EMULATE_REAL_WORLD)
         ALREADY_SPAWNED = True
 
     observations = []
@@ -153,20 +158,27 @@ def execute_path(path_program, execute_otherwise_simulate, environment_bodies, s
             (_, arm, conf1, conf2) = path
             robot_config = conf2.value.conf
             observations.extend(
-                ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
-                                                                                            robot_config['pr2RightArm'])))
+                ros_interface.perform_action_client(ros_interface.make_arm_cart_action_msg(conf2.value, arm))
+                # ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
+                #                                                                             robot_config['pr2RightArm']))
+            )
         elif action == 'move':
             (_, conf1, conf2) = path
             robot_config = conf2.value.conf
-            observations.extend(
-                ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
-                                                                                            robot_config['pr2RightArm'])))
             observations.extend(
                 ros_interface.perform_action_client(ros_interface.make_move_torso_action_msg(robot_config['pr2Torso'])))
             observations.extend(
                 ros_interface.perform_action_client(ros_interface.make_going_action_msg(robot_config['pr2Base'])))
             # observations.extend(
             #     ros_interface.perform_action_client(ros_interface.make_look_action_msg(robot_config['pr2Head'])))
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_arm_cart_action_msg(conf2.value, 'left'))
+                # ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
+                #                                                                             robot_config['pr2RightArm']))
+            )
+            observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_arm_cart_action_msg(conf2.value, 'right'))
+            )
         elif action == 'gripper':
             (_, hand, position) = path
             observations.extend(
@@ -197,5 +209,4 @@ def execute_path(path_program, execute_otherwise_simulate, environment_bodies, s
                 ros_interface.perform_action_client(ros_interface.make_look_action_msg(x_y_z)))
             observations.extend(
                 ros_interface.perform_action_client(ros_interface.make_detect_action_msg(region_name)))
-            print observations
-        return observations
+    return observations
