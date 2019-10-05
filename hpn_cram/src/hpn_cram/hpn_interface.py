@@ -158,6 +158,8 @@ def execute_path(path_program, execute_otherwise_simulate, environment_bodies, s
             (_, arm, conf1, conf2) = path
             robot_config = conf2.value.conf
             observations.extend(
+                ros_interface.perform_action_client(ros_interface.make_move_torso_action_msg(robot_config['pr2Torso'])))
+            observations.extend(
                 ros_interface.perform_action_client(ros_interface.make_arm_cart_action_msg(conf2.value, arm))
                 # ros_interface.perform_action_client(ros_interface.make_arm_joint_action_msg(robot_config['pr2LeftArm'],
                 #                                                                             robot_config['pr2RightArm']))

@@ -89,7 +89,7 @@ def spawn_world_client(items_infos_list):
         response = spawn_world_service(request_msg)
         return response
     except rospy.ServiceException, e:
-        print "Service call failed: %s"%e
+        print "Service call failed: %s" % e
 
 
 def make_robot_pose_msg(robot_x_y_theta):
@@ -147,7 +147,7 @@ def set_world_state_client(robot_x_y_theta, robot_joint_state_dict, items_infos)
         response = set_world_state_service(robot_pose_msg, robot_info_msg, items_infos_msg)
         return response
     except rospy.ServiceException, e:
-        print "Service call failed: %s"%e
+        print "Service call failed: %s" % e
 
 
 def make_going_action_msg(robot_x_y_theta):
@@ -177,12 +177,9 @@ def make_arm_joint_action_msg(left_arm_joint_angles, right_arm_joint_angles):
 
 
 def make_arm_cart_action_msg(amber_conf, arm=None):
-    # amber_conf_copy = amber_conf.copy()
-    # amber_conf_copy.conf['pr2Base'] = [0, 0, 0]
     left_string = ''
     right_string = ''
-    if arm == 'left' or arm == None:
-        # left_ee_pose_in_base = amber_conf_copy.cartConf()['pr2LeftArm']
+    if arm == 'left' or arm is None:
         left_ee_pose_in_base = amber_conf.cartConf()['pr2LeftArm']
         left_ee_T_tcp = geometry.hu.Transform(np.array([[1, 0, 0, 0.18], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
         left_tcp_pose_in_base = left_ee_pose_in_base.compose(left_ee_T_tcp)
@@ -190,11 +187,10 @@ def make_arm_cart_action_msg(amber_conf, arm=None):
                          left_tcp_pose_in_base.matrix[1][3],
                          left_tcp_pose_in_base.matrix[2][3]]
         left_quaternion = left_tcp_pose_in_base.quat().matrix
-        left_string = '\"LEFT-POSE\":[[\"base_footprint\",0.000000,[{},{},{}],[{},{},{},{}]]],'.\
+        left_string = '\"LEFT-POSE\":[[\"base_footprint\",0.000000,[{},{},{}],[{},{},{},{}]]],'. \
             format(left_position[0], left_position[1], left_position[2],
                    left_quaternion[0], left_quaternion[1], left_quaternion[2], left_quaternion[3])
-    if arm == 'right' or arm == None:
-        # right_ee_pose_in_base = amber_conf_copy.cartConf()['pr2RightArm']
+    if arm == 'right' or arm is None:
         right_ee_pose_in_base = amber_conf.cartConf()['pr2RightArm']
         right_ee_T_tcp = geometry.hu.Transform(np.array([[1, 0, 0, 0.23], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]))
         right_tcp_pose_in_base = right_ee_pose_in_base.compose(right_ee_T_tcp)
@@ -203,11 +199,11 @@ def make_arm_cart_action_msg(amber_conf, arm=None):
                           right_tcp_pose_in_base.matrix[2][3]]
         right_quaternion = right_tcp_pose_in_base.quat().matrix
         right_quaternion = [right_quaternion[0], right_quaternion[1], right_quaternion[2], right_quaternion[3]]
-        right_string = '\"RIGHT-POSE\":[[\"base_footprint\",0.000000,[{},{},{}],[{},{},{},{}]]],'.\
+        right_string = '\"RIGHT-POSE\":[[\"base_footprint\",0.000000,[{},{},{}],[{},{},{},{}]]],'. \
             format(right_position[0], right_position[1], right_position[2],
                    right_quaternion[0], right_quaternion[1], right_quaternion[2], right_quaternion[3])
     return '[\"A\",\"MOTION\",{\"TYPE\":[\"MOVING-TCP\"],' + \
-           left_string + right_string +\
+           left_string + right_string + \
            '\"COLLISION-MODE\":[\"ALLOW-HAND\"]}]'
 
 
@@ -217,7 +213,7 @@ def make_move_torso_action_msg(torso_joint_angle):
 
 def make_look_action_msg(x_y_z):
     return '[\"A\",\"ACTION\",{{\"TYPE\":[\"LOOKING\"],\"TARGET\":[' \
-           '[\"A\",\"LOCATION\",{{\"POSE\":[[\"map\",0.000000,[{},{},{}],[0.000000,0.000000,0.0,1.0]]]}}]]}}]'.\
+           '[\"A\",\"LOCATION\",{{\"POSE\":[[\"map\",0.000000,[{},{},{}],[0.000000,0.000000,0.0,1.0]]]}}]]}}]'. \
         format(x_y_z[0], x_y_z[1], x_y_z[2])
 
 
@@ -244,23 +240,65 @@ def make_detect_action_msg(region_name):
         format(region_name)
 
 
-def parse_return_json_string(json_string):
-    parsed_json = json.loads(json_string)
-    object_name_pose_dict = {}
-    for object_designator_json in parsed_json:
-        object_name = object_designator_json[2][u'NAME'][0].lower().encode('ascii', 'ignore').replace('-', '_')
-        object_pose_in_map = object_designator_json[2][u'POSE'][0][2][1]
-        object_x_y_z = object_pose_in_map[2]
-        object_q1_q2_q3_w = object_pose_in_map[3]
-        object_theta = tf.transformations.euler_from_quaternion(object_q1_q2_q3_w)[2]
-        object_name_pose_dict[object_name] = [object_x_y_z, object_theta]
-    return object_name_pose_dict
+def parse_return_json_string(input_string, return_string):
+    """Returns a list with observation stuff"""
+
+    def pythonify(lisp_string):
+        return lisp_string.lower().encode('ascii', 'ignore').replace('-', '_')
+
+    if not return_string:
+        return []
+
+    input_action = pythonify(json.loads(input_string)[2][u'TYPE'][0])
+
+    if input_action == 'detecting':
+        parsed_json = json.loads(return_string)
+        object_name_pose_dict = {}
+        for object_designator_json in parsed_json:
+            object_name = pythonify(object_designator_json[2][u'NAME'][0])
+            object_pose_in_map = object_designator_json[2][u'POSE'][0][2][1]
+            object_x_y_z = object_pose_in_map[2]
+            object_q1_q2_q3_w = object_pose_in_map[3]
+            object_theta = tf.transformations.euler_from_quaternion(object_q1_q2_q3_w)[2]
+            object_name_pose_dict[object_name] = [object_x_y_z, object_theta]
+        return [object_name_pose_dict]
+    elif input_action == 'gripping':
+        parsed_json = json.loads(return_string)
+        if len(parsed_json) == 3:
+            return [True]
+        else:
+            return False
+    elif input_action == 'going':
+        conf = json.loads(return_string)
+        pr2_conf = {
+            'pr2Base': [conf[u'odom_x_joint'], conf[u'odom_y_joint'], conf[u'odom_z_joint']],
+            'pr2Torso': [conf[u'torso_lift_joint']],
+            'pr2LeftArm': [conf[u'l_shoulder_pan_joint'],
+                           conf[u'l_shoulder_lift_joint'],
+                           conf[u'l_upper_arm_roll_joint'],
+                           conf[u'l_elbow_flex_joint'],
+                           conf[u'l_forearm_roll_joint'],
+                           conf[u'l_wrist_flex_joint'],
+                           conf[u'l_wrist_roll_joint']],
+            'pr2LeftGripper': [conf[u'l_gripper_l_finger_joint'] / 5.0],
+            'pr2RightArm': [conf[u'r_shoulder_pan_joint'],
+                            conf[u'r_shoulder_lift_joint'],
+                            conf[u'r_upper_arm_roll_joint'],
+                            conf[u'r_elbow_flex_joint'],
+                            conf[u'r_forearm_roll_joint'],
+                            conf[u'r_wrist_flex_joint'],
+                            conf[u'r_wrist_roll_joint']],
+            'pr2RightGripper': [conf[u'r_gripper_l_finger_joint'] / 5.0],
+            'pr2Head': [conf[u'head_pan_joint'], conf[u'head_tilt_joint']]}
+        return [pr2_conf]
+    else:
+        return []
 
 
 def perform_action_client(action_string):
     try:
         global perform_action_service
         response = perform_action_service(action_string)
-        return [parse_return_json_string(response.result)] if response.result else []
+        return parse_return_json_string(action_string, response.result)
     except rospy.ServiceException, e:
-        print "Service call failed: %s"%e
+        print "Service call failed: %s" % e
